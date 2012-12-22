@@ -55,6 +55,7 @@ API_VERSION = 'v1.0'
 AUTH_API_VERSION_KTUCLOUD = '1.0'
 AUTH_URL_KTUCLOUD = 'https://api.ucloudbiz.olleh.com/storage/v1/auth'
 
+
 class KTUCloudAuthResponse(Response):
     valid_response_codes = [httplib.NOT_FOUND, httplib.CONFLICT]
 
@@ -106,20 +107,21 @@ class KTUCloudFilesResponse(KTUCloudAuthResponse):
 
         return data
 
+
 class KTUCloudFilesRawResponse(KTUCloudFilesResponse, RawResponse):
     pass
 
 
 class KTUCloudAuthConnection(OpenStackAuthConnection):
     responseCls = KTUCloudAuthResponse
- 
+
     def authenticate_1_0(self):
         resp = self.request("/storage/v1/auth",
-                    headers={
-                        'X-Auth-User': self.user_id,
-                        'X-Auth-Key': self.key,
-                    },
-                    method='GET')
+                            headers={
+                                'X-Auth-User': self.user_id,
+                                'X-Auth-Key': self.key,
+                            },
+                            method='GET')
 
         if resp.status == httplib.UNAUTHORIZED:
             # HTTP UNAUTHORIZED (401): auth failed
@@ -152,8 +154,8 @@ class KTUCloudFilesConnection(OpenStackBaseConnection):
 
     def __init__(self, user_id, key, secure=True, auth_url=AUTH_URL_KTUCLOUD,
                  **kwargs):
-        super(KTUCloudFilesConnection, self).__init__(user_id, key, secure=secure,
-                                                   **kwargs)
+        super(KTUCloudFilesConnection, self).__init__(user_id, key,
+                                                      secure=secure, **kwargs)
         self.auth_url = auth_url
         self.api_version = API_VERSION
         self._auth_version = AUTH_API_VERSION_KTUCLOUD
@@ -196,24 +198,25 @@ class KTUCloudFilesConnection(OpenStackBaseConnection):
 
     def _populate_hosts_and_request_paths(self):
         """
-        OpenStack uses a separate host for API calls which is only provided
+        KTUCloudStorage uses a separate host for
+        API calls which is only provided
         after an initial authentication request.
         """
 
         if not self.auth_token:
             aurl = self.auth_url
 
-            if self._ex_force_auth_url != None:
+            if self._ex_force_auth_url is not None:
                 aurl = self._ex_force_auth_url
 
-            if aurl == None:
-                raise LibcloudError('OpenStack instance must ' +
+            if aurl is None:
+                raise LibcloudError('KTUCloudStorageinstance must ' +
                                     'have auth_url set')
 
             osa = KTUCloudAuthConnection(self, aurl, self._auth_version,
-                                          self.user_id, self.key,
-                                          tenant_name=self._ex_tenant_name,
-                                          timeout=self.timeout)
+                                         self.user_id, self.key,
+                                         tenant_name=self._ex_tenant_name,
+                                         timeout=self.timeout)
 
             # may throw InvalidCreds, etc
             osa.authenticate()
@@ -224,13 +227,13 @@ class KTUCloudFilesConnection(OpenStackBaseConnection):
 
             # pull out and parse the service catalog
             self.service_catalog = OpenStackServiceCatalog(osa.urls,
-                    ex_force_auth_version=self._auth_version)
+                                   ex_force_auth_version=self._auth_version)
 
         # Set up connection info
         url = self._ex_force_base_url or self.get_endpoint()
         (self.host, self.port, self.secure, self.request_path) = \
                 self._tuple_from_url(url)
-        
+
 
 class KTUCloudStorageDriver(CloudFilesStorageDriver):
     """
