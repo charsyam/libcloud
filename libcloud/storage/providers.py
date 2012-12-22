@@ -45,6 +45,8 @@ DRIVERS = {
         ('libcloud.storage.drivers.nimbus', 'NimbusStorageDriver'),
     Provider.LOCAL:
         ('libcloud.storage.drivers.local', 'LocalStorageDriver'),
+    Provider.KTUCLOUDSTORAGE:
+        ('libcloud.storage.drivers.ktucloud', 'KTUCloudStorageDriver'),
 
     # Deprecated
     Provider.CLOUDFILES_US:

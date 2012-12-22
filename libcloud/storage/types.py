@@ -43,6 +43,7 @@ class Provider(object):
     @cvar S3_US_WEST_OREGON: Amazon S3 US West 2 (Oregon)
     @cvar NIMBUS: Nimbus.io driver
     @cvar LOCAL: Local storage driver
+    @cvar KTUCLOUDSTORAGE: KTUCloud Storage driver
     """
     DUMMY = 'dummy'
     S3 = 's3'
@@ -57,6 +58,7 @@ class Provider(object):
     NIMBUS = 'nimbus'
     LOCAL = 'local'
     CLOUDFILES = 'cloudfiles'
+    KTUCLOUDSTORAGE = 'ktucloudstorage'
 
     # Deperecated
     CLOUDFILES_US = 'cloudfiles_us'
