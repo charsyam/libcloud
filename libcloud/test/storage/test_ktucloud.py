@@ -40,7 +40,9 @@ from libcloud.storage.types import ContainerIsNotEmptyError
 from libcloud.storage.types import ObjectDoesNotExistError
 from libcloud.storage.types import ObjectHashMismatchError
 from libcloud.storage.types import InvalidContainerNameError
-from libcloud.storage.drivers.ktucloud import KTUCloudStorageDriver
+from libcloud.storage.drivers.cloudfiles import CloudFilesStorageDriver
+from libcloud.storage.drivers.cloudfiles import CloudFilesUSStorageDriver
+from libcloud.storage.drivers.cloudfiles import CloudFilesUKStorageDriver
 from libcloud.storage.drivers.dummy import DummyIterator
 
 from libcloud.test import StorageMockHttp, MockRawResponse # pylint: disable-msg=E0611
@@ -48,8 +50,8 @@ from libcloud.test import MockHttpTestCase # pylint: disable-msg=E0611
 from libcloud.test.file_fixtures import StorageFileFixtures, OpenStackFixtures # pylint: disable-msg=E0611
 
 
-class KTUCloudTests(unittest.TestCase):
-    driver_klass = KTUCloudStorageDriver
+class CloudFilesTests(unittest.TestCase):
+    driver_klass = CloudFilesStorageDriver
     driver_args = ('dummy', 'dummy')
     driver_kwargs = {}
     datacenter = 'ord'
@@ -71,8 +73,20 @@ class KTUCloudTests(unittest.TestCase):
     def tearDown(self):
         self._remove_test_file()
 
+    def test_invalid_ex_force_service_region(self):
+        driver = CloudFilesStorageDriver('driver', 'dummy',
+                ex_force_service_region='invalid')
+
+        try:
+            driver.list_containers()
+        except:
+            e = sys.exc_info()[1]
+            self.assertEquals(e.value, 'Could not find specified endpoint')
+        else:
+            self.fail('Exception was not thrown')
+
     def test_ex_force_service_region(self):
-        driver = KTUCloudStorageDriver('driver', 'dummy',
+        driver = CloudFilesStorageDriver('driver', 'dummy',
                 ex_force_service_region='ORD')
         driver.list_containers()
 
@@ -82,7 +96,7 @@ class KTUCloudTests(unittest.TestCase):
             'ex_force_auth_token': 'some-auth-token',
             'ex_force_base_url': base_url
         }
-        driver = KTUCloudStorageDriver('driver', 'dummy', **kwargs)
+        driver = CloudFilesStorageDriver('driver', 'dummy', **kwargs)
         driver.list_containers()
 
         self.assertEquals(kwargs['ex_force_auth_token'],
@@ -92,6 +106,18 @@ class KTUCloudTests(unittest.TestCase):
         self.assertEquals('/v1/MossoCloudFS',
             driver.connection.request_path)
 
+    def test_force_auth_url_kwargs(self):
+        kwargs = {
+            'ex_force_auth_version': '2.0',
+            'ex_force_auth_url': 'https://identity.api.rackspace.com'
+        }
+        driver = CloudFilesStorageDriver('driver', 'dummy', **kwargs)
+
+        self.assertEquals(kwargs['ex_force_auth_url'],
+            driver.connection._ex_force_auth_url)
+        self.assertEquals(kwargs['ex_force_auth_version'],
+            driver.connection._auth_version)
+
     def test_invalid_json_throws_exception(self):
         CloudFilesMockHttp.type = 'MALFORMED_JSON'
         try:
@@ -100,6 +126,19 @@ class KTUCloudTests(unittest.TestCase):
             pass
         else:
             self.fail('Exception was not thrown')
+
+    def test_service_catalog(self):
+        url = 'https://storage101.%s1.clouddrive.com/v1/MossoCloudFS' % \
+              (self.datacenter)
+        self.assertEqual(
+             url,
+             self.driver.connection.get_endpoint())
+
+        self.driver.connection.cdn_request = True
+        self.assertEqual(
+             'https://cdn2.clouddrive.com/v1/MossoCloudFS',
+             self.driver.connection.get_endpoint())
+        self.driver.connection.cdn_request = False
 
     def test_list_containers(self):
         CloudFilesMockHttp.type = 'EMPTY'
@@ -247,7 +286,7 @@ class KTUCloudTests(unittest.TestCase):
         container = Container(name='foo_bar_container', extra={}, driver=self)
         obj = Object(name='foo_bar_object', size=1000, hash=None, extra={},
                      container=container, meta_data=None,
-                     driver=KTUCloudStorageDriver)
+                     driver=CloudFilesStorageDriver)
         destination_path = os.path.abspath(__file__) + '.temp'
         result = self.driver.download_object(obj=obj,
                                              destination_path=destination_path,
@@ -260,7 +299,7 @@ class KTUCloudTests(unittest.TestCase):
         container = Container(name='foo_bar_container', extra={}, driver=self)
         obj = Object(name='foo_bar_object', size=1000, hash=None, extra={},
                      container=container, meta_data=None,
-                     driver=KTUCloudStorageDriver)
+                     driver=CloudFilesStorageDriver)
         destination_path = os.path.abspath(__file__) + '.temp'
         result = self.driver.download_object(obj=obj,
                                              destination_path=destination_path,
@@ -275,7 +314,7 @@ class KTUCloudTests(unittest.TestCase):
         obj = Object(name='foo_bar_object', size=1000, hash=None, extra={},
                      container=container,
                      meta_data=None,
-                     driver=KTUCloudStorageDriver)
+                     driver=CloudFilesStorageDriver)
         destination_path = os.path.abspath(__file__) + '.temp'
         try:
             self.driver.download_object(
@@ -292,7 +331,7 @@ class KTUCloudTests(unittest.TestCase):
         container = Container(name='foo_bar_container', extra={}, driver=self)
         obj = Object(name='foo_bar_object', size=1000, hash=None, extra={},
                      container=container, meta_data=None,
-                     driver=KTUCloudStorageDriver)
+                     driver=CloudFilesStorageDriver)
 
         stream = self.driver.download_object_as_stream(obj=obj, chunk_size=None)
         self.assertTrue(hasattr(stream, '__iter__'))
@@ -302,8 +341,8 @@ class KTUCloudTests(unittest.TestCase):
                      calculate_hash=True):
             return True, 'hash343hhash89h932439jsaa89', 1000
 
-        old_func = KTUCloudStorageDriver._upload_file
-        KTUCloudStorageDriver._upload_file = upload_file
+        old_func = CloudFilesStorageDriver._upload_file
+        CloudFilesStorageDriver._upload_file = upload_file
         file_path = os.path.abspath(__file__)
         container = Container(name='foo_bar_container', extra={}, driver=self)
         object_name = 'foo_test_upload'
@@ -313,16 +352,16 @@ class KTUCloudTests(unittest.TestCase):
         self.assertEqual(obj.name, 'foo_test_upload')
         self.assertEqual(obj.size, 1000)
         self.assertTrue('some-value' in obj.meta_data)
-        KTUCloudStorageDriver._upload_file = old_func
+        CloudFilesStorageDriver._upload_file = old_func
 
     def test_upload_object_zero_size_object(self):
         def upload_file(self, response, file_path, chunked=False,
                      calculate_hash=True):
             return True, 'hash343hhash89h932439jsaa89', 0
 
-        old_func = KTUCloudStorageDriver._upload_file
+        old_func = CloudFilesStorageDriver._upload_file
         old_request = self.driver.connection.request
-        KTUCloudStorageDriver._upload_file = upload_file
+        CloudFilesStorageDriver._upload_file = upload_file
         file_path = os.path.join(os.path.dirname(__file__), '__init__.py')
         container = Container(name='foo_bar_container', extra={}, driver=self)
         object_name = 'empty'
@@ -340,7 +379,7 @@ class KTUCloudTests(unittest.TestCase):
         self.assertEqual(obj.name, 'empty')
         self.assertEqual(obj.size, 0)
         self.assertTrue(func.called)
-        KTUCloudStorageDriver._upload_file = old_func
+        CloudFilesStorageDriver._upload_file = old_func
         self.driver.connection.request = old_request
 
     def test_upload_object_invalid_hash(self):
@@ -350,8 +389,8 @@ class KTUCloudTests(unittest.TestCase):
 
         CloudFilesMockRawResponse.type = 'INVALID_HASH'
 
-        old_func = KTUCloudStorageDriver._upload_file
-        KTUCloudStorageDriver._upload_file = upload_file
+        old_func = CloudFilesStorageDriver._upload_file
+        CloudFilesStorageDriver._upload_file = upload_file
         file_path = os.path.abspath(__file__)
         container = Container(name='foo_bar_container', extra={}, driver=self)
         object_name = 'foo_test_upload'
@@ -365,7 +404,7 @@ class KTUCloudTests(unittest.TestCase):
             self.fail(
                 'Invalid hash was returned but an exception was not thrown')
         finally:
-            KTUCloudStorageDriver._upload_file = old_func
+            CloudFilesStorageDriver._upload_file = old_func
 
     def test_upload_object_no_content_type(self):
         def no_content_type(name):
@@ -459,7 +498,7 @@ class KTUCloudTests(unittest.TestCase):
         container = Container(name='foo_bar_container', extra={}, driver=self)
         obj = Object(name='foo_bar_object', size=1000, hash=None, extra={},
                      container=container, meta_data=None,
-                     driver=KTUCloudStorageDriver)
+                     driver=CloudFilesStorageDriver)
         status = self.driver.delete_object(obj=obj)
         self.assertTrue(status)
 
@@ -468,7 +507,7 @@ class KTUCloudTests(unittest.TestCase):
         container = Container(name='foo_bar_container', extra={}, driver=self)
         obj = Object(name='foo_bar_object', size=1000, hash=None, extra={},
                      container=container, meta_data=None,
-                     driver=KTUCloudStorageDriver)
+                     driver=CloudFilesStorageDriver)
         try:
             self.driver.delete_object(obj=obj)
         except ObjectDoesNotExistError:
@@ -508,29 +547,29 @@ class KTUCloudTests(unittest.TestCase):
     def test_ex_multipart_upload_object_for_small_files(self, getsize_mock):
         getsize_mock.return_value = 0
 
-        old_func = KTUCloudStorageDriver.upload_object
+        old_func = CloudFilesStorageDriver.upload_object
         mocked_upload_object = mock.Mock(return_value="test")
-        KTUCloudStorageDriver.upload_object = mocked_upload_object
+        CloudFilesStorageDriver.upload_object = mocked_upload_object
 
         file_path = os.path.abspath(__file__)
         container = Container(name='foo_bar_container', extra={}, driver=self)
         object_name = 'foo_test_upload'
         obj = self.driver.ex_multipart_upload_object(file_path=file_path, container=container,
                                        object_name=object_name)
-        KTUCloudStorageDriver.upload_object = old_func
+        CloudFilesStorageDriver.upload_object = old_func
 
         self.assertTrue(mocked_upload_object.called)
         self.assertEqual(obj, "test")
 
     def test_ex_multipart_upload_object_success(self):
-        _upload_object_part = KTUCloudStorageDriver._upload_object_part
-        _upload_object_manifest = KTUCloudStorageDriver._upload_object_manifest
+        _upload_object_part = CloudFilesStorageDriver._upload_object_part
+        _upload_object_manifest = CloudFilesStorageDriver._upload_object_manifest
 
         mocked__upload_object_part = mock.Mock(return_value="test_part")
         mocked__upload_object_manifest = mock.Mock(return_value="test_manifest")
 
-        KTUCloudStorageDriver._upload_object_part = mocked__upload_object_part
-        KTUCloudStorageDriver._upload_object_manifest = mocked__upload_object_manifest
+        CloudFilesStorageDriver._upload_object_part = mocked__upload_object_part
+        CloudFilesStorageDriver._upload_object_manifest = mocked__upload_object_manifest
 
         parts = 5
         file_path = os.path.abspath(__file__)
@@ -540,16 +579,16 @@ class KTUCloudTests(unittest.TestCase):
         self.driver.ex_multipart_upload_object(file_path=file_path, container=container,
                                        object_name=object_name, chunk_size=chunk_size)
 
-        KTUCloudStorageDriver._upload_object_part = _upload_object_part
-        KTUCloudStorageDriver._upload_object_manifest = _upload_object_manifest
+        CloudFilesStorageDriver._upload_object_part = _upload_object_part
+        CloudFilesStorageDriver._upload_object_manifest = _upload_object_manifest
 
         self.assertEqual(mocked__upload_object_part.call_count, parts)
         self.assertTrue(mocked__upload_object_manifest.call_count, 1)
 
     def test__upload_object_part(self):
-        _put_object = KTUCloudStorageDriver._put_object
+        _put_object = CloudFilesStorageDriver._put_object
         mocked__put_object = mock.Mock(return_value="test")
-        KTUCloudStorageDriver._put_object = mocked__put_object
+        CloudFilesStorageDriver._put_object = mocked__put_object
 
         part_number = 7
         object_name = "test_object"
@@ -559,7 +598,7 @@ class KTUCloudTests(unittest.TestCase):
         self.driver._upload_object_part(container, object_name,
                 part_number, None)
 
-        KTUCloudStorageDriver._put_object = _put_object
+        CloudFilesStorageDriver._put_object = _put_object
 
         func_kwargs = tuple(mocked__put_object.call_args)[1]
         self.assertEquals(func_kwargs['object_name'], expected_name)
@@ -629,6 +668,25 @@ class KTUCloudTests(unittest.TestCase):
         result = self.driver.ex_set_account_metadata_temp_url_key("a key")
         self.assertTrue(result)
 
+    @mock.patch("libcloud.storage.drivers.openstack.time")
+    def test_ex_get_object_temp_url(self, time):
+        time.return_value = 0
+        self.driver.ex_get_meta_data = mock.Mock()
+        self.driver.ex_get_meta_data.return_value = {'container_count': 1,
+                                                     'object_count': 1,
+                                                     'bytes_used': 1,
+                                                     'temp_url_key': 'foo'}
+        container = Container(name='foo_bar_container', extra={}, driver=self)
+        obj = Object(name='foo_bar_object', size=1000, hash=None, extra={},
+                     container=container, meta_data=None,
+                     driver=self)
+        hmac_body = "%s\n%s\n%s" % ('GET', 60,
+                                    "/v1/MossoCloudFS/foo_bar_container/foo_bar_object")
+        sig = hmac.new(b('foo'), b(hmac_body), sha1).hexdigest()
+        ret = self.driver.ex_get_object_temp_url(obj, 'GET')
+        temp_url = 'https://storage101.%s1.clouddrive.com/v1/MossoCloudFS/foo_bar_container/foo_bar_object?temp_url_expires=60&temp_url_sig=%s' % (self.datacenter, sig)
+        self.assertEquals(''.join(sorted(ret)), ''.join(sorted(temp_url)))
+
     def test_ex_get_object_temp_url_no_key_raises_key_error(self):
         self.driver.ex_get_meta_data = mock.Mock()
         self.driver.ex_get_meta_data.return_value = {'container_count': 1,
@@ -648,6 +706,16 @@ class KTUCloudTests(unittest.TestCase):
             os.unlink(file_path)
         except OSError:
             pass
+
+
+class CloudFilesDeprecatedUSTests(CloudFilesTests):
+    driver_klass = CloudFilesUSStorageDriver
+    datacenter = 'ord'
+
+
+class CloudFilesDeprecatedUKTests(CloudFilesTests):
+    driver_klass = CloudFilesUKStorageDriver
+    datacenter = 'lon'
 
 
 class CloudFilesMockHttp(StorageMockHttp, MockHttpTestCase):

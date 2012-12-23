@@ -668,7 +668,7 @@ class CloudFilesTests(unittest.TestCase):
         result = self.driver.ex_set_account_metadata_temp_url_key("a key")
         self.assertTrue(result)
 
-    @mock.patch("libcloud.storage.drivers.cloudfiles.time")
+    @mock.patch("libcloud.storage.drivers.openstack.time")
     def test_ex_get_object_temp_url(self, time):
         time.return_value = 0
         self.driver.ex_get_meta_data = mock.Mock()
@@ -685,7 +685,6 @@ class CloudFilesTests(unittest.TestCase):
         sig = hmac.new(b('foo'), b(hmac_body), sha1).hexdigest()
         ret = self.driver.ex_get_object_temp_url(obj, 'GET')
         temp_url = 'https://storage101.%s1.clouddrive.com/v1/MossoCloudFS/foo_bar_container/foo_bar_object?temp_url_expires=60&temp_url_sig=%s' % (self.datacenter, sig)
-
         self.assertEquals(''.join(sorted(ret)), ''.join(sorted(temp_url)))
 
     def test_ex_get_object_temp_url_no_key_raises_key_error(self):

@@ -40,9 +40,13 @@ __all__ = [
 
 
 # @TODO: Refactor for re-use by other openstack drivers
-class OpenStackAuthResponse(Response):
+class OpenStackResponse(Response):
+    valid_response_codes = [httplib.NOT_FOUND, httplib.CONFLICT]
+    driver = None
+
     def success(self):
-        return True
+        i = int(self.status)
+        return i >= 200 and i <= 299 or i in self.valid_response_codes
 
     def parse_body(self):
         if not self.body:
@@ -54,7 +58,7 @@ class OpenStackAuthResponse(Response):
             key = 'Content-Type'
         else:
             raise LibcloudError('Missing content-type header',
-                                driver=OpenStackAuthConnection)
+                                driver=self.driver)
 
         content_type = self.headers[key]
         if content_type.find(';') != -1:
@@ -66,7 +70,7 @@ class OpenStackAuthResponse(Response):
             except:
                 raise MalformedResponseError('Failed to parse JSON',
                                              body=self.body,
-                                             driver=OpenStackAuthConnection)
+                                             driver=self.driver)
         elif content_type == 'text/plain':
             data = self.body
         else:
@@ -75,14 +79,20 @@ class OpenStackAuthResponse(Response):
         return data
 
 
-class OpenStackAuthConnection(ConnectionUserAndKey):
+class OpenStackAuthResponse(OpenStackResponse):
+    def success(self):
+        return True
 
+
+class OpenStackAuthConnection(ConnectionUserAndKey):
     responseCls = OpenStackAuthResponse
     name = 'OpenStack Auth'
     timeout = None
+    action = None
 
     def __init__(self, parent_conn, auth_url, auth_version, user_id, key,
                  tenant_name=None, timeout=None):
+        self.responseCls.driver = self
         self.parent_conn = parent_conn
         # enable tests to use the same mock connection classes.
         self.conn_classes = parent_conn.conn_classes
@@ -109,18 +119,30 @@ class OpenStackAuthConnection(ConnectionUserAndKey):
 
     def authenticate(self):
         if self.auth_version == "1.0":
+            if self.action is None:
+                self.action = "/v1.0"
+
             return self.authenticate_1_0()
         elif self.auth_version == "1.1":
+            if self.action is None:
+                self.action = "/v1.1/auth"
+
             return self.authenticate_1_1()
         elif self.auth_version == "2.0" or self.auth_version == "2.0_apikey":
+            if self.action is None:
+                self.action = "/v2.0/tokens"
+
             return self.authenticate_2_0_with_apikey()
         elif self.auth_version == "2.0_password":
+            if self.action is None:
+                self.action = "/v2.0/tokens"
+
             return self.authenticate_2_0_with_password()
         else:
             raise LibcloudError('Unsupported Auth Version requested')
 
     def authenticate_1_0(self):
-        resp = self.request("/v1.0",
+        resp = self.request(self.action,
                     headers={
                         'X-Auth-User': self.user_id,
                         'X-Auth-Key': self.key,
@@ -130,7 +152,7 @@ class OpenStackAuthConnection(ConnectionUserAndKey):
         if resp.status == httplib.UNAUTHORIZED:
             # HTTP UNAUTHORIZED (401): auth failed
             raise InvalidCredsError()
-        elif resp.status != httplib.NO_CONTENT:
+        elif resp.status not in [ httplib.OK, httplib.NO_CONTENT ]:
             raise MalformedResponseError('Malformed response',
                     body='code: %s body:%s headers:%s' % (resp.status,
                                                           resp.body,
@@ -147,6 +169,7 @@ class OpenStackAuthConnection(ConnectionUserAndKey):
             self.urls['cloudFiles'] = \
                 [{'publicURL': headers.get('x-storage-url', None)}]
             self.auth_token = headers.get('x-auth-token', None)
+            self.auth_token_expires = None
             self.auth_user_info = None
 
             if not self.auth_token:
@@ -156,7 +179,7 @@ class OpenStackAuthConnection(ConnectionUserAndKey):
     def authenticate_1_1(self):
         reqbody = json.dumps({'credentials': {'username': self.user_id,
                                               'key': self.key}})
-        resp = self.request("/v1.1/auth",
+        resp = self.request(self.action,
                     data=reqbody,
                     headers={},
                     method='POST')
@@ -208,7 +231,7 @@ class OpenStackAuthConnection(ConnectionUserAndKey):
         return self.authenticate_2_0_with_body(reqbody)
 
     def authenticate_2_0_with_body(self, reqbody):
-        resp = self.request('/v2.0/tokens',
+        resp = self.request(self.action,
                     data=reqbody,
                     headers={'Content-Type': 'application/json'},
                     method='POST')
@@ -294,9 +317,7 @@ class OpenStackServiceCatalog(object):
             return {}
 
     def _parse_auth_v1(self, service_catalog):
-
         for service, endpoints in service_catalog.items():
-
             self._service_catalog[service] = {}
 
             for endpoint in endpoints:
@@ -389,6 +410,7 @@ class OpenStackBaseConnection(ConnectionUserAndKey):
     service_name = None
     service_region = None
     _auth_version = None
+    connCls = OpenStackAuthConnection
 
     def __init__(self, user_id, key, secure=True,
                  host=None, port=None, timeout=None,
@@ -476,10 +498,10 @@ class OpenStackBaseConnection(ConnectionUserAndKey):
                 raise LibcloudError('OpenStack instance must ' +
                                     'have auth_url set')
 
-            osa = OpenStackAuthConnection(self, aurl, self._auth_version,
-                                          self.user_id, self.key,
-                                          tenant_name=self._ex_tenant_name,
-                                          timeout=self.timeout)
+            osa = self.connCls(self, aurl, self._auth_version,
+                               self.user_id, self.key,
+                               tenant_name=self._ex_tenant_name,
+                               timeout=self.timeout)
 
             # may throw InvalidCreds, etc
             osa.authenticate()
